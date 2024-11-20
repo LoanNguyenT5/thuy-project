@@ -14,6 +14,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.WebDataBinder;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import javax.servlet.http.HttpSession;
 import java.security.Principal;
@@ -21,6 +22,7 @@ import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -182,6 +184,7 @@ public class BookingController {
     @PostMapping("/create")
     public String createBooking(
             @ModelAttribute("booking") Booking booking,
+            RedirectAttributes redirectAttributes,
             @RequestParam("paymentMethod") String paymentMethod,
             @RequestParam(value = "services", required = false) Long serviceId,
             @RequestParam(value = "promoCode", required = false) Long promoCodeId,
@@ -199,35 +202,38 @@ public class BookingController {
         }
 
         // Kiểm tra phương thức thanh toán
-        if ("Thanh toán bằng tiền mặt".equals(paymentMethod)) {
-            // Lấy thông tin người dùng
-            User currentUser = userService.findByUsername(principal.getName());
-            booking.setUser(currentUser);
+
+        // Lấy thông tin người dùng
+        User currentUser = userService.findByUsername(principal.getName());
+        booking.setUser(currentUser);
 
 //             Gán dịch vụ thêm (nếu có)
-            if (serviceId != null && serviceId != 0) {
-                AdditionalService additionalService = bookingService.getServiceById(serviceId);
-                if (additionalService != null) {
-                    booking.setAdditionalService(additionalService);
-                } else {
-                    model.addAttribute("error", "Dịch vụ không hợp lệ.");
-                    return "hotel/bookingForm"; // Trả về form nếu dịch vụ không hợp lệ
-                }
+        if (serviceId != null && serviceId != 0) {
+            AdditionalService additionalService = bookingService.getServiceById(serviceId);
+            if (additionalService != null) {
+                booking.setAdditionalService(additionalService);
+            } else {
+                model.addAttribute("error", "Dịch vụ không hợp lệ.");
+                return "hotel/bookingForm"; // Trả về form nếu dịch vụ không hợp lệ
             }
+        }
 
-            // Gán mã khuyến mãi (nếu có)
-            if (promoCodeId != null && promoCodeId != 0) {
-                System.out.println("Promo Code ID: " + promoCodeId);
-                Promotion promotion = bookingService.getPromotionById(promoCodeId);
-                System.out.println("Promotion found: " + promotion);
-                if (promotion != null) {
-                    booking.setPromotion(promotion);
-                } else {
-                    model.addAttribute("error", "Mã khuyến mãi không hợp lệ.");
-                    return "hotel/bookingForm"; // Trả về form nếu mã khuyến mãi không hợp lệ
-                }
+        // Gán mã khuyến mãi (nếu có)
+        if (promoCodeId != null && promoCodeId != 0) {
+            System.out.println("Promo Code ID: " + promoCodeId);
+            Promotion promotion = bookingService.getPromotionById(promoCodeId);
+            System.out.println("Promotion found: " + promotion);
+            if (promotion != null) {
+                booking.setPromotion(promotion);
+            } else {
+                model.addAttribute("error", "Mã khuyến mãi không hợp lệ.");
+                return "hotel/bookingForm"; // Trả về form nếu mã khuyến mãi không hợp lệ
             }
-            // Lưu booking vào cơ sở dữ liệu
+        }
+        // Co LOAN SUA - START
+        // Lưu đối tượng booking vào redirectAttributes, đối tượng này sẽ được lưu trong session
+        redirectAttributes.addFlashAttribute("booking", booking);
+        if ("COD".equals(paymentMethod)) {
             Booking savedBooking = bookingService.saveBooking(booking, paymentMethod);
             System.out.println("Booking saved: " + savedBooking);
 
@@ -258,17 +264,14 @@ public class BookingController {
             model.addAttribute("booking", savedBooking);
             model.addAttribute("roomTypeName", roomTypeName);  // Truyền roomTypeName từ session vào model
             // Gửi email xác nhận đặt phòng
-            emailService.sendBookingConfirmationEmail(savedBooking, roomTypeName);
+//            emailService.sendBookingConfirmationEmail(savedBooking, roomTypeName);
 
             // Chuyển tới trang thành công
             return "hotel/bookingSuccessful"; // Chuyển tới trang bookingSuccessful
         } else {
-            // Xử lý nếu phương thức thanh toán không hợp lệ, hoặc tt onl
-            model.addAttribute("error", "Phương thức thanh toán không hợp lệ.");
-            return "hotel/bookingForm"; // Trả về trang bookingForm nếu lỗi
+            return "redirect:/payment";
         }
     }
-
 
 
     // Phương thức initBinder để xử lý việc chuyển đổi LocalDate
